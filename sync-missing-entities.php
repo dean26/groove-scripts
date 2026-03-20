@@ -12,8 +12,8 @@
  * 2) dodaje brakujące piosenki
  * 3) znajduje artystów i albumy powiązane z tymi piosenkami
  * 4) dodaje brakujących artystów i albumy
- * 5) jeśli old_artists / old_album mają własną kolumnę daty utworzenia,
- *    to dodatkowo dogrywa byty bezpośrednio po tej dacie
+ * 5) dodatkowo skanuje old_artists / old_album po ID (od START_ARTIST_ID / START_ALBUM_ID)
+ *    i dogrywa brakujące byty
  *
  * WAŻNE:
  * - nie dotyka relacji song <-> artist / album / genres
@@ -63,11 +63,15 @@ $BATCH   = 300;
  */
 $START_DATE = '2026-02-01 00:00:00';
 
+// ID od którego zaczynamy skan artystów i albumów (direct scan)
+$START_ARTIST_ID = 0;
+$START_ALBUM_ID  = 0;
+
 // Tabele legacy
-$T_OLD_SONG        = 'song';
-$T_OLD_ALBUM       = 'album';
-$T_OLD_ARTIST_SONG = 'artist_song';
-$T_OLD_ALBUM_SONG  = 'album_song';
+$T_OLD_SONG        = 'Song';
+$T_OLD_ALBUM       = 'Album';
+$T_OLD_ARTIST_SONG = 'Artist_song';
+$T_OLD_ALBUM_SONG  = 'Album_song';
 
 // WP
 $POST_TYPE_SONG = 'song';
@@ -202,6 +206,41 @@ function groove_fetch_batch_by_date(
 
 	$rows = $old_db->get_results(
 		$old_db->prepare( $sql, $start_date, $last_id, $limit ),
+		ARRAY_A
+	);
+
+	$new_last = $last_id;
+	if ( ! empty( $rows ) ) {
+		$last = end( $rows );
+		$new_last = isset( $last['id'] ) ? (int) $last['id'] : $last_id;
+	}
+
+	return [
+		'rows'    => $rows,
+		'last_id' => $new_last,
+	];
+}
+
+/**
+ * @return array{rows: array<int,array<string,mixed>>, last_id: int}
+ */
+function groove_fetch_batch_by_id(
+	string $table,
+	int $last_id,
+	int $limit
+): array {
+	global $old_db;
+
+	$sql = "
+		SELECT *
+		FROM {$table}
+		WHERE id > %d
+		ORDER BY id ASC
+		LIMIT %d
+	";
+
+	$rows = $old_db->get_results(
+		$old_db->prepare( $sql, $last_id, $limit ),
 		ARRAY_A
 	);
 
@@ -717,7 +756,7 @@ function groove_create_missing_albums(
  *  WALIDACJE STARTOWE
  *  ============================= */
 
-$T_OLD_ARTISTS = groove_pick_first_existing_table( [ 'artists', 'artist' ] );
+$T_OLD_ARTISTS = groove_pick_first_existing_table( [ 'Artists', 'Artist' ] );
 
 groove_log( '=== sync-fresh-entities-since-feb START ===' );
 groove_log( 'DRY_RUN: ' . ( $DRY_RUN ? 'true (no writes)' : 'false (WILL WRITE)' ) );
@@ -759,12 +798,9 @@ if ( ! get_post_type_object( $POST_TYPE_SONG ) ) {
 	exit( 1 );
 }
 
-$artist_date_col = groove_detect_date_column( $T_OLD_ARTISTS );
-$album_date_col  = groove_detect_date_column( $T_OLD_ALBUM );
-
 groove_log( 'Detected song date column: ' . $song_date_col );
-groove_log( 'Detected artist date column: ' . ( $artist_date_col ?: '[none]' ) );
-groove_log( 'Detected album date column: ' . ( $album_date_col ?: '[none]' ) );
+groove_log( 'START_ARTIST_ID: ' . $START_ARTIST_ID );
+groove_log( 'START_ALBUM_ID: ' . $START_ALBUM_ID );
 
 /** =============================
  *  RUN
@@ -901,84 +937,72 @@ while ( true ) {
 	);
 }
 
-groove_log( '--- STEP 2/3: direct fresh ARTISTS by own date column (if available) ---' );
+groove_log( '--- STEP 2/3: direct ARTISTS by ID ---' );
 
-if ( $artist_date_col ) {
-	$last_artist_id = 0;
+$last_artist_id = $START_ARTIST_ID;
 
-	while ( true ) {
-		$pack = groove_fetch_batch_by_date(
-			$T_OLD_ARTISTS,
-			$artist_date_col,
-			$START_DATE,
-			$last_artist_id,
-			$BATCH
-		);
+while ( true ) {
+	$pack = groove_fetch_batch_by_id(
+		$T_OLD_ARTISTS,
+		$last_artist_id,
+		$BATCH
+	);
 
-		$rows           = $pack['rows'];
-		$last_artist_id = $pack['last_id'];
+	$rows           = $pack['rows'];
+	$last_artist_id = $pack['last_id'];
 
-		if ( empty( $rows ) ) {
-			break;
-		}
-
-		$summary['artists_direct']['checked'] += count( $rows );
-
-		$result = groove_create_missing_artists(
-			$rows,
-			$DRY_RUN,
-			$TAX_ARTIST,
-			$META_OLD_ARTIST_ID,
-			$ARTIST_META_MAP
-		);
-
-		$summary['artists_direct']['created'] += $result['created'];
-		$summary['artists_direct']['mapped']  += $result['mapped'];
-		$summary['artists_direct']['exists']  += $result['exists'];
-		$summary['artists_direct']['errors']  += $result['errors'];
+	if ( empty( $rows ) ) {
+		break;
 	}
-} else {
-	groove_log( "Artists direct scan skipped: no created_* column detected in {$T_OLD_ARTISTS}." );
+
+	$summary['artists_direct']['checked'] += count( $rows );
+
+	$result = groove_create_missing_artists(
+		$rows,
+		$DRY_RUN,
+		$TAX_ARTIST,
+		$META_OLD_ARTIST_ID,
+		$ARTIST_META_MAP
+	);
+
+	$summary['artists_direct']['created'] += $result['created'];
+	$summary['artists_direct']['mapped']  += $result['mapped'];
+	$summary['artists_direct']['exists']  += $result['exists'];
+	$summary['artists_direct']['errors']  += $result['errors'];
 }
 
-groove_log( '--- STEP 3/3: direct fresh ALBUMS by own date column (if available) ---' );
+groove_log( '--- STEP 3/3: direct ALBUMS by ID ---' );
 
-if ( $album_date_col ) {
-	$last_album_id = 0;
+$last_album_id = $START_ALBUM_ID;
 
-	while ( true ) {
-		$pack = groove_fetch_batch_by_date(
-			$T_OLD_ALBUM,
-			$album_date_col,
-			$START_DATE,
-			$last_album_id,
-			$BATCH
-		);
+while ( true ) {
+	$pack = groove_fetch_batch_by_id(
+		$T_OLD_ALBUM,
+		$last_album_id,
+		$BATCH
+	);
 
-		$rows          = $pack['rows'];
-		$last_album_id = $pack['last_id'];
+	$rows          = $pack['rows'];
+	$last_album_id = $pack['last_id'];
 
-		if ( empty( $rows ) ) {
-			break;
-		}
-
-		$summary['albums_direct']['checked'] += count( $rows );
-
-		$result = groove_create_missing_albums(
-			$rows,
-			$DRY_RUN,
-			$TAX_ALBUM,
-			$META_OLD_ALBUM_ID,
-			$ALBUM_META_MAP
-		);
-
-		$summary['albums_direct']['created'] += $result['created'];
-		$summary['albums_direct']['mapped']  += $result['mapped'];
-		$summary['albums_direct']['exists']  += $result['exists'];
-		$summary['albums_direct']['errors']  += $result['errors'];
+	if ( empty( $rows ) ) {
+		break;
 	}
-} else {
-	groove_log( "Albums direct scan skipped: no created_* column detected in {$T_OLD_ALBUM}." );
+
+	$summary['albums_direct']['checked'] += count( $rows );
+
+	$result = groove_create_missing_albums(
+		$rows,
+		$DRY_RUN,
+		$TAX_ALBUM,
+		$META_OLD_ALBUM_ID,
+		$ALBUM_META_MAP
+	);
+
+	$summary['albums_direct']['created'] += $result['created'];
+	$summary['albums_direct']['mapped']  += $result['mapped'];
+	$summary['albums_direct']['exists']  += $result['exists'];
+	$summary['albums_direct']['errors']  += $result['errors'];
 }
 
 /** =============================

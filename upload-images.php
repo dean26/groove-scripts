@@ -23,7 +23,7 @@ const SLEEP_USEC = 150000;
  * 2) (jeśli działa u Ciebie): wp eval-file upload-images.php -- --dry-run
  */
 $args = $_SERVER['argv'] ?? [];
-$dryRun = false;
+$dryRun = true;
 
 // env var (pewniak)
 $envDry = getenv('GROOVE_DRY_RUN');
@@ -37,7 +37,7 @@ if (!$dryRun && in_array('--dry-run', $args, true)) {
 }
 
 // Sanity check: czy tabela file istnieje
-$oldFileTable = $old_db->get_var($old_db->prepare("SHOW TABLES LIKE %s", 'file'));
+$oldFileTable = $old_db->get_var($old_db->prepare("SHOW TABLES LIKE %s", 'File'));
 if (!$oldFileTable) {
     fwrite(STDERR, "❌ Nie widzę tabeli `file` w bazie produkcyjnej. Przerywam.\n");
     exit(1);
@@ -119,7 +119,7 @@ log_msg("DRY_RUN=" . ($dryRun ? 'TRUE' : 'FALSE'));
 //////////////////////////////////////////////////
 // ALBUMS (KEYSET)
 //////////////////////////////////////////////////
-$lastAlbumTermId = 0;
+$lastAlbumTermId = 89292;
 
 while (true) {
     $albums = $wpdb->get_results(
@@ -146,7 +146,7 @@ while (true) {
         $file = $old_db->get_row(
             $old_db->prepare(
                 "SELECT id, name
-                 FROM file
+                 FROM File
                  WHERE section=2 AND item_id=%d AND main=1
                    AND name IS NOT NULL AND name <> ''
                  LIMIT 1",
@@ -172,7 +172,7 @@ while (true) {
 //////////////////////////////////////////////////
 // ARTISTS (KEYSET)
 //////////////////////////////////////////////////
-$lastArtistTermId = 0;
+$lastArtistTermId = 120431;
 
 while (true) {
     $artists = $wpdb->get_results(
@@ -199,7 +199,7 @@ while (true) {
         $file = $old_db->get_row(
             $old_db->prepare(
                 "SELECT id, name
-                 FROM file
+                 FROM File
                  WHERE section=3 AND item_id=%d AND main=1
                    AND name IS NOT NULL AND name <> ''
                  LIMIT 1",

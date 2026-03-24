@@ -35,7 +35,7 @@ global $old_db;
 
 $DRY_RUN = false; // ← NAJPIERW TRUE
 $TAX = 'album';
-$T_OLD_ALBUM = 'album';
+$T_OLD_ALBUM = 'Album';
 $META_KEY = 'old_album_id';
 
 /** =============================

@@ -39,10 +39,10 @@ $BATCH   = 300;
 $START_DATE = '2026-02-01 00:00:00';
 
 // Legacy tables
-$T_OLD_SONG        = 'song';
-$T_OLD_ARTIST_SONG = 'artist_song';
-$T_OLD_ALBUM_SONG  = 'album_song';
-$T_OLD_SONG_GENRE  = 'song_genre';
+$T_OLD_SONG        = 'Song';
+$T_OLD_ARTIST_SONG = 'Artist_song';
+$T_OLD_ALBUM_SONG  = 'Album_song';
+$T_OLD_SONG_GENRE  = 'Song_genre';
 
 // WP
 $POST_TYPE_SONG = 'song';

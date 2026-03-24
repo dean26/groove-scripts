@@ -64,8 +64,8 @@ $BATCH   = 300;
 $START_DATE = '2026-02-01 00:00:00';
 
 // ID od którego zaczynamy skan artystów i albumów (direct scan)
-$START_ARTIST_ID = 0;
-$START_ALBUM_ID  = 0;
+$START_ARTIST_ID = 120771;
+$START_ALBUM_ID  = 89700;
 
 // Tabele legacy
 $T_OLD_SONG        = 'Song';

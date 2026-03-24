@@ -35,7 +35,7 @@ global $old_db;
 
 $DRY_RUN = false; // ← true = test, false = zapis
 $TAX_ARTIST = 'artist';
-$T_OLD_ARTISTS = 'artist';
+$T_OLD_ARTISTS = 'Artist';
 $META_KEY = 'old_artist_id';
 
 /** =============================

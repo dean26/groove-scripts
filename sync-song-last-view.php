@@ -32,6 +32,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 global $wpdb;
 
 require_once __DIR__ . '/old-db.php';
+require_once __DIR__ . '/translate-old-id.php';
 global $old_db;
 
 /** =============================
@@ -157,23 +158,46 @@ while ( true ) {
 		continue;
 	}
 
+	// Tłumaczenie starych song_id -> nowych WP ID
+	$oldSongIds = array_map( function ( $row ) {
+		return (int) $row['song_id'];
+	}, $rows );
+	$oldSongIds = array_filter( $oldSongIds, function ( $id ) {
+		return $id > 0;
+	} );
+	$idMap = groove_translate_legacy_ids_to_wp_ids( $oldSongIds, 'song' );
+
 	// Budujemy INSERT batch
-	$values  = [];
-	$params  = [];
+	$values       = [];
+	$params       = [];
+	$delConds     = [];
+	$delParams    = [];
 
 	foreach ( $rows as $row ) {
-		$songId     = (int) $row['song_id'];
+		$oldSongId  = (int) $row['song_id'];
 		$views      = (int) $row['views'];
 		$date       = $row['created_date'];
 		$yearInt    = (int) substr( $date, 0, 4 );
 
-		if ( $songId <= 0 || $views <= 0 ) {
+		if ( $oldSongId <= 0 || $views <= 0 ) {
 			$skipped++;
 			continue;
 		}
 
+		$newSongId = $idMap[ $oldSongId ] ?? null;
+		if ( ! $newSongId ) {
+			$skipped++;
+			continue;
+		}
+
+		$delConds[]  = '(object_id = %d AND object_type = %s AND period_type = %s AND period_value = %s)';
+		$delParams[] = $newSongId;
+		$delParams[] = 'song';
+		$delParams[] = 'day';
+		$delParams[] = $date;
+
 		$values[] = '(%d, %s, %s, %s, %d, %d)';
-		$params[] = $songId;
+		$params[] = $newSongId;
 		$params[] = 'song';
 		$params[] = 'day';
 		$params[] = $date;
@@ -184,6 +208,10 @@ while ( true ) {
 	if ( empty( $values ) ) {
 		continue;
 	}
+
+	// Usuń istniejące duplikaty przed insertem
+	$delSql = "DELETE FROM {$T_AGG} WHERE " . implode( ' OR ', $delConds );
+	$wpdb->query( $wpdb->prepare( $delSql, $delParams ) );
 
 	$sql = "INSERT INTO {$T_AGG} (object_id, object_type, period_type, period_value, views, year_int) VALUES "
 		 . implode( ', ', $values );
